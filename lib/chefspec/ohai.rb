@@ -57,9 +57,32 @@ Example:
   # evalute the contents as a version 7 ohai plugin.
   #
   before :each do
+    capture_named_plugins!
     ps = plugin_source
     pp = plugin_path
     plugin_loader.instance_eval { load_v7_plugin_class(ps,pp) }
+  end
+
+  after :each do
+    restore_named_plugins!
+  end
+
+
+  # Ohai plugins are defined with a class, which is a constant, and
+  # they are added to the this module. Capture any currently loaded
+  # plugins before we add any new plugins.
+  def capture_named_plugins!
+    @named_plugins = Ohai::NamedPlugin.constants
+  end
+
+  # Examine the current list of plugins loaded and compare it to
+  # what was found when we started. Remove all the plugins that
+  # have been added since then.
+  def restore_named_plugins!
+    diff_plugins = Ohai::NamedPlugin.constants - @named_plugins
+    diff_plugins.each do |plugin|
+      Ohai::NamedPlugin.send(:remove_const,plugin)
+    end
   end
 
   # This provides a new matcher when wanting to make assertions that the plugin
