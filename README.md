@@ -111,6 +111,51 @@ Ohai.plugin(:Apache) do
 end
 ```
 
+Ohai plugins that are templates and not cookbook files require a little more setup. As templates require the presence of template variables or the node object that are passed to the temple you will need to define another helper in your specification `template_variables`.
+
+
+```ruby
+require 'spec_helper'
+
+describe_ohai_plugin :Apache do
+  let(:plugin_file) { "templates/apache_modules.rb.erb" }
+
+  let(:template_variables) do
+    { template_variable: 'Free Me!', node: { 'attribute' => 'something' } }
+  end
+
+  context "default collect data" do
+    it "provides 'apache/modules'" do
+      expect(plugin).to provides_attribute("apache/modules")
+    end
+
+    it "correctly captures output" do
+      stub_plugin_shell_out('apachectl -t -D DUMP_MODULES','OUTPUT')
+      expect(plugin_attribute('apache/modules')).to eq("OUTPUT")
+    end
+  end
+end
+```
+
+Here is the template plugin that is being tested with that above specification:
+
+```ruby
+Ohai.plugin(:Apache) do
+  provides 'apache/modules'
+
+  collect_data(:default) do
+    puts "<%= @template_variable %>"
+    puts "<%= node['attribute'] %>"
+    apache Mash.new
+    modules_cmd = shell_out('apachectl -t -D DUMP_MODULES')
+    apache[:modules] = modules_cmd.stdout
+  end
+end
+```
+
+
+
+
 ## Development
 
 This gem only provides a subset of the features that are possible to specify when

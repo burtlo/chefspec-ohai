@@ -29,7 +29,87 @@ shared_context 'Ohai Plugins', type: :ohai_plugin do
   let(:plugin_data) { Hash.new }
 
   # Loads the plugin source from the specified plugin_file helper
-  let(:plugin_source) { File.read(plugin_file) }
+  let(:plugin_source) do
+    source = File.read(plugin_file)
+    if plugin_file.start_with?('templates')
+      ERB.new(source).result(plugin_template_binding)
+    else
+      source
+    end
+  end
+
+  # This helper is required to be defined by any Ohai plugin that is defined
+  # as a template. This hash of values will used to create the instance variables
+  # and define the conents of the node object which are used when generating the
+  # resulting template.
+  let(:template_variables) do
+    raise %(
+When you define a plugin_source based on a template a hash of template variables needs to be provided.
+
+Example:
+    let(:template_variables) do
+      { name: 'value_inserted_into_plugin', node: { 'ipaddress' : '127.0.0.1' } }
+    end
+ )
+  end
+
+  # Return a binding created with the hash of values defined in the template_variables
+  # helper.
+  let(:plugin_template_binding) do
+    PluginBinding.new(template_variables).expose_binding!
+  end
+
+
+  # To provide a space to instance variables that will be used by any Ohai
+  # plugins that use ERB templating to insert content.
+  class PluginBinding
+
+    # Create a new object that will define instance variables out of the hash's
+    # key-value pairs. This will create a safe place to define instance variables
+    # within a binding that can used when rendering the content of the ERB.
+    def initialize(template_variables)
+      Hash(template_variables).each do |key,value|
+        instance_variable_set("@#{key}",value)
+      end
+    end
+
+    # Within a template you can use `node[:attribute]`. This method provides
+    # support for that by creating this method that maps to the @node instance
+    # variable. This means that if you want to define a Ohai plugin that uses
+    # the node object and test it, then you are required to provide the values
+    # to make that work for the test.
+    #
+    # NOTE: A consideration here would be to use Fauxhai instead of requiring a
+    #       user to provide each attribute. This would get time consumsing to
+    #       create tests if the Ohai plugin used a lot of node attributes.
+    def node
+      if @node.nil?
+        raise NoNodeDataProvidedToTemplatePlugin
+      end
+      @node
+    end
+
+    # This exposes the private #binding method to allow it to be used as the specified
+    # binding when parsing ERB template.
+    def expose_binding!
+      binding
+    end
+
+    class NoNodeDataProvidedToTemplatePlugin < StandardError
+
+      def message
+        "The Ohai plugin attempted to retrieve an attribute from the `node` object. However, no node attributes were defined in in the template_variables helper.
+Add a template_variables helper within your ohai plugin specification and include a `node` key that returns the data you need to satisfy the requirements of your plugin.
+
+Example:
+    let(:template_variables) do
+      { node: { 'ipaddress' => '127.0.0.1' } }
+    end"
+      end
+    end
+
+  end
+
   # Determine the plugin_path from the specified plugin_file
   let(:plugin_path) { File.dirname(plugin_file) }
   # This helper defines the path to the plugin file. This must be specified
