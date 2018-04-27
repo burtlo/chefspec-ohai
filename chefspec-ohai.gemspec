@@ -23,4 +23,7 @@ This gem provides additional helpers to RSpec to be used in conjunction with Che
 
   spec.add_development_dependency "bundler", "~> 1.9"
   spec.add_development_dependency "rake", "~> 10.0"
+
+  spec.add_dependency "chefspec", "> 5.0.0"
+  spec.add_dependency "ohai", "> 14.0.0"
 end

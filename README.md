@@ -53,7 +53,7 @@ plugin tests within the cookbook. I have chosen to create the directory
 
 I often choose to name the specification after the name of the file that stores
 the Ohai plugin. I were testing an Ohai plugin stored in `files/default/httpd_modules.rb`
-I would create a specifiation named `spec/unit/plugins/httpd_modules_spec.rb`.
+I would create a specification named `spec/unit/plugins/httpd_modules_spec.rb`.
 The most important thing is that the file ends with `_spec.rb` so that RSpec
 will automatically find this file and load it appropriately.
 
@@ -82,16 +82,18 @@ are set properly.
 require 'spec_helper'
 
 describe_ohai_plugin :Apache do
-  let(:plugin_file) { "files/default/httpd_modules.rb" }
+  let(:plugin_file) { 'files/default/httpd_modules.rb' }
 
-  context "default collect data" do
+  context 'default collect data' do
     it "provides 'apache/modules'" do
-      expect(plugin).to provides_attribute("apache/modules")
+      expect(plugin).to provides_attribute('apache/modules')
+      # OR
+      expect(plugin).to provide_attribute('apache/modules')
     end
 
     it "correctly captures output" do
-      stub_plugin_shell_out('apachectl -t -D DUMP_MODULES','OUTPUT')
-      expect(plugin_attribute('apache/modules')).to eq("OUTPUT")
+      allow(plugin).to receive(:shell_out).with('apachectl -t -D DUMP_MODULES') { double(stderror: 0, stdout: 'unit tests do not like to run on systems') }
+      expect(plugin_attribute('apache/modules')).to eq('unit tests do not like to run on systems')
     end
   end
 end
@@ -118,20 +120,22 @@ Ohai plugins that are templates and not cookbook files require a little more set
 require 'spec_helper'
 
 describe_ohai_plugin :Apache do
-  let(:plugin_file) { "templates/apache_modules.rb.erb" }
+  let(:plugin_file) { 'templates/apache_modules.rb.erb' }
 
   let(:template_variables) do
     { template_variable: 'Free Me!', node: { 'attribute' => 'something' } }
   end
 
-  context "default collect data" do
+  context 'default collect data' do
     it "provides 'apache/modules'" do
-      expect(plugin).to provides_attribute("apache/modules")
+      expect(plugin).to provide_attribute('apache/modules')
+      # OR
+      expect(plugin).to provides_attribute('apache/modules')
     end
 
-    it "correctly captures output" do
-      stub_plugin_shell_out('apachectl -t -D DUMP_MODULES','OUTPUT')
-      expect(plugin_attribute('apache/modules')).to eq("OUTPUT")
+    it 'correctly captures output' do
+      allow(plugin).to receive(:shell_out).with('apachectl -t -D DUMP_MODULES') { double(stderror: 0, stdout: 'unit tests do not like to run on systems') }
+      expect(plugin_attribute('apache/modules')).to eq('unit tests do not like to run on systems')
     end
   end
 end
@@ -152,9 +156,6 @@ Ohai.plugin(:Apache) do
   end
 end
 ```
-
-
-
 
 ## Development
 

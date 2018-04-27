@@ -20,7 +20,7 @@ shared_context 'Ohai Plugins', type: :ohai_plugin do
   # for use within the specifications.
   let(:plugin) do
     ohai_plugin_class = Ohai.plugin(subject) {}
-    ohai_plugin_class.new(plugin_data)
+    ohai_plugin_class.new(plugin_data, Ohai::Log)
   end
 
   # When an Ohai plugin is created there is a Hash of data that must be provided.
@@ -98,7 +98,7 @@ Example:
     class NoNodeDataProvidedToTemplatePlugin < StandardError
 
       def message
-        "The Ohai plugin attempted to retrieve an attribute from the `node` object. However, no node attributes were defined in in the template_variables helper.
+        "The Ohai plugin attempted to retrieve an attribute from the `node` object. However, no node attributes were defined in the template_variables helper.
 Add a template_variables helper within your ohai plugin specification and include a `node` key that returns the data you need to satisfy the requirements of your plugin.
 
 Example:
@@ -127,7 +127,7 @@ Example:
 
   # A Loader requires a controller. This controller may need to be overriden so
   # it is provided as a helper.
-  let(:plugin_controller) { double('plugin_controller') }
+  let(:plugin_controller) { Ohai::System.new }
   # The plugin_loader will evaluate the source of the plugin with the controller
   let(:plugin_loader) { Ohai::Loader.new(plugin_controller) }
 
@@ -169,17 +169,25 @@ Example:
   # does provide the correct body of attributes. The Ohai plugin class returns
   # an array of attributes that it provides through `#provides_attrs` which
   # is evaluated to ensure that the expected value is within that list.
-  RSpec::Matchers.define :provides_attribute do |expected|
+
+  # @see https://relishapp.com/rspec/rspec-expectations/v/2-4/docs/custom-matchers/define-matcher
+  RSpec::Matchers.define :provide_attribute do |expected|
     match do |plugin|
       expect(plugin.class.provides_attrs).to include(expected)
     end
+
+    failure_message do |actual|
+      "Expected the plugin to provide '#{expected}'. Plugin's defined attributes: #{plugin.class.provides_attrs.map { |p| "'#{p}'" }.join(', ')}"
+    end
+
+    failure_message_when_negated do |actual|
+      "Expected the plugin to NOT provide '#{expected}'. Plugin's defined attributes: #{plugin.class.provides_attrs.map { |p| "'#{p}'" }.join(', ')}"
+    end
   end
 
-  # Provides a simplier way to stub out the shell_out that is probably going on
-  # within the Ohai plugin.
-  def stub_plugin_shell_out(command,result)
-    allow(plugin).to receive(:shell_out).with(command) { double(stdout: result) }
-  end
+  # Provide support for the plural provides_attribute so that the authors
+  # of the specification can choose what they think makes the most sense
+  alias_method :provides_attribute, :provide_attribute
 
   # To make the process of verifying the attributes a little more streamlined
   # you can use this helper to request the attributes from the plugin itself.
@@ -199,7 +207,29 @@ Example:
     attributes = components[1..-1]
 
     top_level_mash = plugin.send(top_level_mash_name)
-    attributes.inject(top_level_mash) { |mash,child| mash[child] }
+    attributes.inject(top_level_mash) do |mash,child|
+      begin
+        mash[child]
+      rescue Exception => e
+        raise PluginAttributeUndefinedError.new(attribute, { top_level_mash_name => top_level_mash })
+      end
+    end
+  end
+
+  class PluginAttributeUndefinedError < RuntimeError
+    def initialize(desired_attribute,plugin_attribute_data)
+      @desired_attribute = desired_attribute
+      @plugin_attribute_data = plugin_attribute_data
+    end
+
+    attr_reader :desired_attribute, :plugin_attribute_data
+
+    def message
+      "Plugin does not define attribute path '#{desired_attribute}'. Does the definition or test has a misspelling? Does the plugin properly initialize the entire attribute path?
+
+Plugin Attribute Data:
+#{plugin_attribute_data.to_yaml}\n---"
+    end
   end
 
 end
