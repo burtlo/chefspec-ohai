@@ -113,6 +113,48 @@ Ohai.plugin(:Apache) do
 end
 ```
 
+## Testing other than the `collect_data :default`
+
+The above specifications execute the `:default` collect_data block. You may want to test a specific platform:
+
+```ruby
+context 'linux data collection' do
+  let(:platform) { 'linux' }
+
+  it 'the attribute is correctly set' do
+    expect(plugin_attribute(attribute_name)).to eq '3.0.0'
+  end
+end
+
+context 'windows data collection' do
+  let(:platform) { 'windows' }
+
+  it 'the attribute is correctly set' do
+    expect(plugin_attribute(attribute_name)).to eq '9.0.0'
+  end
+end
+```
+
+Here is the plugin that is being tested by the above specification:
+
+```ruby
+Ohai.plugin(:NonDefaultCollectData) do
+  provides 'application/version'
+
+  collect_data(:linux) do
+    application Mash.new
+    application[:version] = '3.0.0'
+  end
+
+  collect_data(:windows) do
+    application Mash.new
+    application[:version] = '9.0.0'
+  end
+end
+```
+
+## Ohai plugins written as Cookbook Templates
+
 Ohai plugins that are templates and not cookbook files require a little more setup. As templates require the presence of template variables or the node object that are passed to the temple you will need to define another helper in your specification `template_variables`.
 
 

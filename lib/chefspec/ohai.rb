@@ -125,6 +125,9 @@ Example:
  )
   end
 
+
+  let(:platform) { 'default' }
+
   # A Loader requires a controller. This controller may need to be overriden so
   # it is provided as a helper.
   let(:plugin_controller) { Ohai::System.new }
@@ -141,6 +144,9 @@ Example:
     ps = plugin_source
     pp = plugin_path
     plugin_loader.instance_eval { load_v7_plugin_class(ps,pp) }
+    if platform != 'default'
+      allow(plugin).to receive(:collect_os).and_return(platform)
+    end
   end
 
   after :each do
@@ -200,13 +206,22 @@ Example:
   # that must be traversed to get to the value desired. That is done here and
   # then returned.
   def plugin_attribute(attribute)
-    plugin.run
+    begin
+      plugin.run
+    rescue Exception => e
+      raise PluginFailedToRunError.new(plugin.name,plugin_file,e)
+    end
 
     components = attribute.split('/')
     top_level_mash_name = components.first
     attributes = components[1..-1]
 
     top_level_mash = plugin.send(top_level_mash_name)
+
+    if top_level_mash.nil? && !attributes.empty?
+      raise PluginAttributeUndefinedError.new(attribute,{})
+    end
+
     attributes.inject(top_level_mash) do |mash,child|
       begin
         mash[child]
@@ -216,16 +231,34 @@ Example:
     end
   end
 
+  class PluginFailedToRunError < RuntimeError
+    def initialize(plugin_name,plugin_path,exception)
+      @plugin_name = plugin_name
+      @plugin_path = plugin_path
+      @exception = exception
+
+      # Fix the backtrace path from the fixtures directory to the plugin file
+      exception.backtrace.unshift exception.backtrace.shift.gsub('spec/fixtures',plugin_path)
+    end
+
+    attr_reader :plugin_name, :plugin_path, :exception
+
+    def message
+      "Plugin #{plugin_name} #{plugin_path} failed:\n#{exception.message}"
+    end
+  end
+
   class PluginAttributeUndefinedError < RuntimeError
     def initialize(desired_attribute,plugin_attribute_data)
       @desired_attribute = desired_attribute
       @plugin_attribute_data = plugin_attribute_data
+
     end
 
     attr_reader :desired_attribute, :plugin_attribute_data
 
     def message
-      "Plugin does not define attribute path '#{desired_attribute}'. Does the definition or test has a misspelling? Does the plugin properly initialize the entire attribute path?
+      "Plugin does not define attribute path '#{desired_attribute}'. Does the definition or test have a misspelling? Does the plugin properly initialize the entire attribute path?
 
 Plugin Attribute Data:
 #{plugin_attribute_data.to_yaml}\n---"

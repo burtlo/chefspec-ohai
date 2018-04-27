@@ -69,7 +69,7 @@ describe_ohai_plugin :DefaultCollectDataWithStubbedShellOut do
             let(:undefined_attribute) { 'apache/modules/static/ssl' }
 
             it 'fails with a helpful error message' do
-              expected_error_message = "Plugin does not define attribute path '#{undefined_attribute}'. Does the definition or test has a misspelling? Does the plugin properly initialize the entire attribute path?"
+              expected_error_message = "Plugin does not define attribute path '#{undefined_attribute}'. Does the definition or test have a misspelling? Does the plugin properly initialize the entire attribute path?"
 
               begin
                 expect(plugin_attribute(undefined_attribute)).to eq nil
