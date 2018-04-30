@@ -38,7 +38,21 @@ Or install it yourself as:
 
 ## Usage
 
-First you will want to load the helpers within `spec/spec_helper.rb` file:
+Define your plugin within your cookbook in `cookbook/files/httpd_modules.rb`:
+
+```ruby
+Ohai.plugin(:Apache) do
+  provides 'apache/modules'
+
+  collect_data(:default) do
+    apache Mash.new
+    modules_cmd = shell_out('apachectl -t -D DUMP_MODULES')
+    apache[:modules] = modules_cmd.stdout
+  end
+end
+```
+
+First, you will want to load the helpers within `spec/spec_helper.rb` file:
 
 ```ruby
 require 'chefspec'            # Auto-generated with cookbook
@@ -65,15 +79,6 @@ This gem provides an alias of RSpec's `describe` named `describe_ohai_plugin`
 which loads some additional helper methods to assist you with expressing your
 examples and the expectations within your examples.
 
-You must specify a let helper, named `:plugin_file`, which is a relative path
-within the cookbook to the file that contains the Ohai plugin.
-
-When creating this gem there are two examples that I thought that you would
-want to assert when testing your Ohai plugin:
-
-* I expect the Ohai plugin to provide particular attributes
-* I expect the Ohai plugin, when run, to set those attributes
-
 Here is a sample specification file that asserts that an Ohai plugin provides
 particular attributes and those attributes, when run (and stubbing the environment),
 are set properly.
@@ -86,8 +91,6 @@ describe_ohai_plugin :Apache do
 
   context 'default collect data' do
     it "provides 'apache/modules'" do
-      expect(plugin).to provides_attribute('apache/modules')
-      # OR
       expect(plugin).to provide_attribute('apache/modules')
     end
 
@@ -99,23 +102,36 @@ describe_ohai_plugin :Apache do
 end
 ```
 
-Here is the plugin that is being tested with that above specification:
+Run the tests within the cookbook directory:
 
-```ruby
-Ohai.plugin(:Apache) do
-  provides 'apache/modules'
-
-  collect_data(:default) do
-    apache Mash.new
-    modules_cmd = shell_out('apachectl -t -D DUMP_MODULES')
-    apache[:modules] = modules_cmd.stdout
-  end
-end
+```
+$ rspec
+..
+Finished in 0.04775 seconds (files took 3.38 seconds to load)
+2 examples, 0 failures
 ```
 
 ## Testing other than the `collect_data :default`
 
-The above specifications execute the `:default` collect_data block. You may want to test a specific platform:
+A plugin may collect data on different platforms. For example the following plugin:
+
+```ruby
+Ohai.plugin(:NonDefaultCollectData) do
+  provides 'application/version'
+
+  collect_data(:linux) do
+    application Mash.new
+    application[:version] = '3.0.0'
+  end
+
+  collect_data(:windows) do
+    application Mash.new
+    application[:version] = '9.0.0'
+  end
+end
+```
+
+You write tests for each platform:
 
 ```ruby
 context 'linux data collection' do
@@ -135,27 +151,28 @@ context 'windows data collection' do
 end
 ```
 
-Here is the plugin that is being tested by the above specification:
+## Ohai plugins written as Cookbook Templates
+
+Ohai plugins that are templates and not cookbook files require a little more setup. As templates require the presence of template variables or the node object that are passed to the temple you will need to define another helper in your specification `template_variables`.
+
+The following plugin defined in a template `templates/httpd_modules.rb.erb`:
 
 ```ruby
-Ohai.plugin(:NonDefaultCollectData) do
-  provides 'application/version'
+Ohai.plugin(:Apache) do
+  provides 'apache/modules'
 
-  collect_data(:linux) do
-    application Mash.new
-    application[:version] = '3.0.0'
-  end
-
-  collect_data(:windows) do
-    application Mash.new
-    application[:version] = '9.0.0'
+  collect_data(:default) do
+    puts "<%= @template_variable %>"
+    puts "<%= node['attribute'] %>"
+    apache Mash.new
+    modules_cmd = shell_out('apachectl -t -D DUMP_MODULES')
+    apache[:modules] = modules_cmd.stdout
   end
 end
 ```
 
-## Ohai plugins written as Cookbook Templates
-
-Ohai plugins that are templates and not cookbook files require a little more setup. As templates require the presence of template variables or the node object that are passed to the temple you will need to define another helper in your specification `template_variables`.
+Using a template for a plugin requires that you provide the template variables to
+populate.
 
 
 ```ruby
@@ -183,20 +200,73 @@ describe_ohai_plugin :Apache do
 end
 ```
 
-Here is the template plugin that is being tested with that above specification:
+## Testing a plugin with a dependency on another plugin
+
+A plugin may have a dependency on another plugin. A plugin may be defined as:
 
 ```ruby
-Ohai.plugin(:Apache) do
-  provides 'apache/modules'
+Ohai.plugin(:FirstNetwork) do
+  provides 'first_network/ipv4', 'first_network/interface'
+
+  depends 'other_plugin'
 
   collect_data(:default) do
-    puts "<%= @template_variable %>"
-    puts "<%= node['attribute'] %>"
-    apache Mash.new
-    modules_cmd = shell_out('apachectl -t -D DUMP_MODULES')
-    apache[:modules] = modules_cmd.stdout
+    first_network Mash.new
+
+    name, data = network['interfaces'].first
+    first_network[:interface] = name
+    first_network[:ipv4] = data['addresses'].first.first
   end
 end
+```
+
+Within the test you can write expectations that the the plugin has a dependency on the plugin. When it comes to creating the test data, that requires stubbing the plugin calls to the dependent content.
+
+```ruby
+
+describe_ohai_plugin :FirstNetwork do
+  let(:plugin_file) { 'files/first_network.rb' }
+
+  it 'provides the first network address' do
+    expect(plugin).to provide_attribute('first_network/ipv4')
+  end
+
+  it 'provides the first network interface' do
+    expect(plugin).to provide_attribute('first_network/interface')
+  end
+
+  it 'depends on another plugin' do
+    expect(plugin).to depend_on_attribute('network')
+  end
+
+  context 'default data collection' do
+    before do
+      allow(plugin).to receive(:network).and_return(network_data)
+    end
+
+    let(:network_data) do
+      {
+        'interfaces' => {
+          'lo' => {
+            'state' => 'unknown',
+            'addresses' => {
+              '127.0.0.1' => {
+                'family' => 'inet'
+              }
+            }
+          }
+        }
+      }
+    end
+
+    it 'the first network interface is correctly set' do
+      expect(plugin_attribute('first_network/interface')).to eq('lo')
+    end
+
+    it 'the first network address is correctly set' do
+      expect(plugin_attribute('first_network/ipv4')).to eq('127.0.0.1')
+    end
+  end
 ```
 
 ## Development

@@ -195,6 +195,27 @@ Example:
   # of the specification can choose what they think makes the most sense
   alias_method :provides_attribute, :provide_attribute
 
+
+  # This provides a new matcher when wanting to make assertions that the plugin
+  # has the correct dependencies. The Ohai plugin returns an array of dependencies
+  # that it provides through `#dependencies` which is evaluated to ensure that
+  # the expected value is within that list.
+
+  # @see https://relishapp.com/rspec/rspec-expectations/v/2-4/docs/custom-matchers/define-matcher
+  RSpec::Matchers.define :depend_on_attribute do |expected|
+    match do |plugin|
+      expect(plugin.dependencies).to include(expected)
+    end
+
+    failure_message do |actual|
+      "Expected the plugin to depend on '#{expected}'. Plugin's dependencies: #{plugin.dependencies.map { |d| "'#{d}'" }.join(', ')}"
+    end
+
+    failure_message_when_negated do |actual|
+      "Expected the plugin to NOT depend on '#{expected}'. Plugin's dependencies: #{plugin.dependencies.map { |d| "'#{d}'" }.join(', ')}"
+    end
+  end
+
   # To make the process of verifying the attributes a little more streamlined
   # you can use this helper to request the attributes from the plugin itself.
   #
